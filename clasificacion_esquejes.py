@@ -20,16 +20,16 @@ def main():
     hoja_base_cm = 1
 
     factor = 11.5 / 960  # ************Factor px to cm
-    global factor
+    # global factor
 
     corto_px = corto_cm / factor
-    global corto_px
+    # global corto_px
 
     largo_px = largo_cm / factor
-    global largo_px
+    # global largo_px
 
     hojabase_px = hoja_base_cm / factor
-    global hojabase_px
+    # global hojabase_px
 
     print largo_px
     print corto_px
@@ -37,17 +37,52 @@ def main():
 
     # ******************************Image reading*****************************************
     img = cv2.imread('C:\Users\Daniel\Documents\MATLAB\esquejes-2016-08-30\Gui_Final\Baltica_10_03_2016\Foto_1005.TIFF')
-    classification, mask, cnt, cols, rows = segmentacion(img)
-    row, col = thresh3.shape
+    mask, mask2, cnt, cols, rows, res_rotated = segmentation(img)
+    final_category = clasification(mask, mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
+
+    print(final_category)
+
+
+
+def clasification(mask, mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px):
+    category = '0'
+    if cols < corto_px:
+        print 'corto'
+        category = '1'
+    elif cols > largo_px:
+        print 'largo'
+        category = '2'
+    elif (cols > corto_px) & (cols < largo_px):
+        print 'ideal'
+        category = 4
+    elif cols < 200:
+        print 'nada'
+        category = '0'
+
+    plt.imshow(mask2, 'gray')
+    plt.title('thresh3-mask2')
+    plt.show()
+
+    # **************************Pre-proccess*******************
+    b, g, r = cv2.split(res_rotated)
+    res_rotated = cv2.merge([r, g, b])
+    plt.imshow(res_rotated, 'gray')
+    plt.title('FINAL')
+    plt.show()
+
+
+    # ----------------------------take a look-------------------------
+
+    row, col = mask2.shape
 
     a = 0
-    global a
+    # global a
     # ***************************Get stem's side***********************
     for c in range(col):
-        a = np.append(a, (thresh3[:, c] > 100).sum())
+        a = np.append(a, (mask2[:, c] > 100).sum())
     part20 = cols * 0.2
-    part80 = cols * 0.8
-    sizea = a.size
+    # part80 = cols * 0.8
+    # sizea = a.size
 
     image20 = a[:int(part20)]
     image80 = a[-int(part20):]
@@ -93,9 +128,10 @@ def main():
     print classification
     print '______________________________________________________'
 
+    return category
 
-def segmentacion(img):
-    t = time.time()
+
+def segmentation(img):
     # Threshold
     ret, thresh = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
 
@@ -132,7 +168,7 @@ def segmentacion(img):
     x, y, w, h = cv2.boundingRect(cnt2)
     dst_roi = res_rotated[y:y + h, x:x + w]
     thresh3 = thresh2[y:y + h, x:x + w]
-    global thresh3
+    # global thresh3
     cols, rows = dst_roi.shape[:2]
     if rows < cols:
         res_rotated = rotate_and_scale(dst_roi, 1, 90)
@@ -140,36 +176,13 @@ def segmentacion(img):
     cols, rows = dst_roi.shape[:2]
 
     # ***********************************Final Clasification*******************************
-    clasification = '0'
-    if cols < corto_px:
-        print 'corto'
-        clasification = '1'
-    elif cols > largo_px:
-        print 'largo'
-        clasification = '2'
-    elif (cols > corto_px) & (cols < largo_px):
-        print 'ideal'
-        clasification = 4
-    elif cols < 200:
-        print 'nada'
-        clasification = '0'
+
     # --------------------------------------------
 
     # --------------------------------------------
 
-    plt.imshow(thresh3, 'gray')
-    plt.title('thresh3')
-    plt.show()
 
-    # **************************Pre-proccess*******************
-    b, g, r = cv2.split(res_rotated)
-    res_rotated = cv2.merge([r, g, b])
-    plt.imshow(res_rotated, 'gray')
-    plt.title('FINAL')
-    plt.show()
-    elapsed = time.time() - t
-    print elapsed
-    return clasification, thresh2, cnt2, cols, rows
+    return thresh2, thresh3, cnt2, cols, rows, res_rotated
 
 
 def rotate_and_scale(img, scale_factor=0.5, degrees_ccw=30):
