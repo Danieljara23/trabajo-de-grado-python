@@ -38,97 +38,9 @@ def main():
     # ******************************Image reading*****************************************
     img = cv2.imread('C:\Users\Daniel\Documents\MATLAB\esquejes-2016-08-30\Gui_Final\Baltica_10_03_2016\Foto_1005.TIFF')
     mask, mask2, cnt, cols, rows, res_rotated = segmentation(img)
-    final_category = clasification(mask, mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
+    final_category = classification(mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
 
     print(final_category)
-
-
-
-def clasification(mask, mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px):
-    category = '0'
-    if cols < corto_px:
-        print 'corto'
-        category = '1'
-    elif cols > largo_px:
-        print 'largo'
-        category = '2'
-    elif (cols > corto_px) & (cols < largo_px):
-        print 'ideal'
-        category = 4
-    elif cols < 200:
-        print 'nada'
-        category = '0'
-
-    plt.imshow(mask2, 'gray')
-    plt.title('thresh3-mask2')
-    plt.show()
-
-    # **************************Pre-proccess*******************
-    b, g, r = cv2.split(res_rotated)
-    res_rotated = cv2.merge([r, g, b])
-    plt.imshow(res_rotated, 'gray')
-    plt.title('FINAL')
-    plt.show()
-
-
-    # ----------------------------take a look-------------------------
-
-    row, col = mask2.shape
-
-    a = 0
-    # global a
-    # ***************************Get stem's side***********************
-    for c in range(col):
-        a = np.append(a, (mask2[:, c] > 100).sum())
-    part20 = cols * 0.2
-    # part80 = cols * 0.8
-    # sizea = a.size
-
-    image20 = a[:int(part20)]
-    image80 = a[-int(part20):]
-    image20 = np.array(image20)
-    image80 = np.array(image80)
-
-    mean20 = image20.mean()
-    mean80 = image80.mean()
-
-    print 'mean20'
-    print mean20
-    print 'mean80'
-    print mean80
-
-    if mean20 < mean80:
-        print 'Tallo a la izquierda'
-        roi_tallo = image20
-        roi_tallo = roi_tallo[:int(hojabase_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print roi_tallo
-    else:
-        print 'Tallo a la derecha'
-        roi_tallo = image80[::-1]
-        roi_tallo = roi_tallo[:int(hojabase_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print roi_tallo
-    # **********To detect Hoja en Base*******************************
-
-    meanroi = np.argmax(np.bincount(roi_tallo))
-    valuesgtmean = len(roi_tallo[roi_tallo > meanroi + 2])
-    print valuesgtmean
-    if valuesgtmean > 15:
-        print "Hoja en base"
-        classification = '3'
-    else:
-        print "No es hoja en base"
-
-    plt.plot(a)
-    plt.ylabel('perfil')
-    plt.show()
-    print classification
-    print '______________________________________________________'
-
-    return category
 
 
 def segmentation(img):
@@ -176,12 +88,6 @@ def segmentation(img):
     cols, rows = dst_roi.shape[:2]
 
     # ***********************************Final Clasification*******************************
-
-    # --------------------------------------------
-
-    # --------------------------------------------
-
-
     return thresh2, thresh3, cnt2, cols, rows, res_rotated
 
 
@@ -199,6 +105,92 @@ def rotate_and_scale(img, scale_factor=0.5, degrees_ccw=30):
 
     rotated_img = cv2.warpAffine(img, m, dsize=(int(new_x), int(new_y)))
     return rotated_img
+
+
+def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_px, h_base_px):
+    category = '0'
+    if cols < small_px:
+        print 'corto'
+        category = '1'
+    elif cols > large_px:
+        print 'largo'
+        category = '2'
+    elif (cols > small_px) & (cols < large_px):
+        print 'ideal'
+        category = 4
+    elif cols < 200:
+        print 'nada'
+        category = '0'
+
+    plt.imshow(mask2, 'gray')
+    plt.title('thresh3-mask2')
+    plt.show()
+
+    # **************************Pre-proccess*******************
+    b, g, r = cv2.split(res_rotated)
+    res_rotated = cv2.merge([r, g, b])
+    plt.imshow(res_rotated, 'gray')
+    plt.title('FINAL')
+    plt.show()
+
+    # ----------------------------take a look-------------------------
+
+    row, col = mask2.shape
+
+    a = 0
+    # global a
+    # ***************************Get stem's side***********************
+    for c in range(col):
+        a = np.append(a, (mask2[:, c] > 100).sum())
+    part20 = cols * 0.2
+    # part80 = cols * 0.8
+    # sizea = a.size
+
+    image20 = a[:int(part20)]
+    image80 = a[-int(part20):]
+    image20 = np.array(image20)
+    image80 = np.array(image80)
+
+    mean20 = image20.mean()
+    mean80 = image80.mean()
+
+    print 'mean20'
+    print mean20
+    print 'mean80'
+    print mean80
+
+    if mean20 < mean80:
+        print 'Tallo a la izquierda'
+        roi_tallo = image20
+        roi_tallo = roi_tallo[:int(h_base_px)]
+        roi_tallo = np.array(roi_tallo)
+        roi_tallo = roi_tallo[roi_tallo > 15]
+        print roi_tallo
+    else:
+        print 'Tallo a la derecha'
+        roi_tallo = image80[::-1]
+        roi_tallo = roi_tallo[:int(h_base_px)]
+        roi_tallo = np.array(roi_tallo)
+        roi_tallo = roi_tallo[roi_tallo > 15]
+        print roi_tallo
+    # **********To detect Hoja en Base*******************************
+    
+    meanroi = np.argmax(np.bincount(roi_tallo))
+    valuesgtmean = len(roi_tallo[roi_tallo > meanroi + 2])
+    print valuesgtmean
+    if valuesgtmean > 15:
+        print "Hoja en base"
+        classification = '3'
+    else:
+        print "No es hoja en base"
+
+    plt.plot(a)
+    plt.ylabel('perfil')
+    plt.show()
+    print classification
+    print '______________________________________________________'
+
+    return category
 
 
 if __name__ == '__main__':
