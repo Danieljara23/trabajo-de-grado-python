@@ -11,9 +11,11 @@ import cv2
 from matplotlib import pyplot as plt
 from scipy import signal
 from skimage.morphology import skeletonize
+from skimage.morphology import erosion, dilation, opening, closing, white_tophat
+from skimage.morphology import square
+from skimage.morphology import rectangle
 from skimage.morphology import medial_axis
 # import os
-import time
 
 
 def main():
@@ -32,12 +34,12 @@ def main():
     print '______________________________________________________'
 
     # ******************************Image reading*****************************************
-    img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1073_clase_4.TIFF')
+    img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
     mask, mask2, cnt, cols, rows, res_rotated = segmentation(img)
     final_image, final_category, hojamm, x1, x2, y1 = classification(mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
 
     plt.imshow(final_image, 'gray')
-    plt.plot(x1,y1,'ro')
+    plt.plot(x1, y1, 'ro')
     plt.plot(x2, y1, 'ro')
     plt.title('Esqueje final')
     plt.show()
@@ -52,14 +54,23 @@ def segmentation(img):
     ret, thresh = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
 
     # ----------------
-    se = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 1))
-    thresh = cv2.erode(thresh, se, iterations=1)
-    thresh = cv2.dilate(thresh, se, iterations=1)
-    se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 18))
-    thresh = cv2.erode(thresh, se, iterations=1)
-    thresh = cv2.dilate(thresh, se, iterations=1)
+    thresh = erosion(thresh,rectangle(18,1))
+    thresh = dilation(thresh, rectangle(18, 1))
+    thresh = erosion(thresh, rectangle(1, 18))
+    thresh = dilation(thresh, rectangle(1, 18))
+    #se = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 1))
+    #thresh = cv2.erode(thresh, se, iterations=1)
+    #thresh = cv2.dilate(thresh, se, iterations=1)
+    #se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 18))
+    #thresh = cv2.erode(thresh, se, iterations=1)
+    #thresh = cv2.dilate(thresh, se, iterations=1)
     # ---------------
-
+    plt.imshow(thresh, 'gray')
+    plt.title('After dilate & erode')
+    plt.show()
+    # -------------------------trying something new -----------------------------
+    y, x = np.nonzero(thresh)
+    # ---------------------------------------------------------------------------
     im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
     cnt = contours[0]
@@ -71,7 +82,7 @@ def segmentation(img):
     center_contour, size_contour, theta = cv2.fitEllipse(cnt)  # cv2.minAreaRect(cnt)
     res_rotated = rotate_and_scale(res, 1, theta)
 
-    # Thresholding and getting of edges again
+    # Thresholding and getting edges again
     ret, thresh2 = cv2.threshold(res_rotated[:, :, 1], 5, 255, cv2.THRESH_BINARY)
 
     im2, contours2, hierarchy2 = cv2.findContours(thresh2, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
@@ -91,7 +102,6 @@ def segmentation(img):
         thresh3 = rotate_and_scale(thresh3, 1, 90)
     cols, rows = dst_roi.shape[:2]
 
-    # ***********************************Final Clasification*******************************
     return thresh2, thresh3, cnt2, cols, rows, res_rotated
 
 
@@ -167,7 +177,7 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
     else:
         print 'Tallo a la derecha'
         mask2 = cv2.flip(mask2, 1)
-        res_rotated = cv2.flip(res_rotated,1)
+        res_rotated = cv2.flip(res_rotated, 1)
 # **********To detect Hoja en Base*******************************
 
     plt.imshow(mask2, 'gray')
@@ -176,15 +186,22 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
 
     ret, binarize_image = cv2.threshold(mask2, 0, 1, cv2.THRESH_BINARY)
 
-    # Get Skeleton of full image
-    skeleton = medial_axis(binarize_image,return_distance=False)
+    binarize_image = erosion(binarize_image, square(3))
+    binarize_image = erosion(binarize_image, square(3))
+    binarize_image = erosion(binarize_image, square(3))
 
+    binarize_image = dilation(binarize_image, square(3))
+    binarize_image = dilation(binarize_image, square(3))
+    binarize_image = dilation(binarize_image, square(3))
+    # Get Skeleton of full image
+    skeleton = medial_axis(binarize_image, return_distance=False)
+    # skeleton = skeletonize(binarize_image)
     # Showing results of skeletonization
     plt.imshow(skeleton, 'gray')
     plt.title('Skeleton')
     plt.show()
 
-    bw_conv = signal.convolve2d(skeleton,np.ones((3,3)),mode='same')
+    bw_conv = signal.convolve2d(skeleton, np.ones((3, 3)), mode='same')
     plt.imshow(bw_conv, 'gray')
     plt.title('bw_conv')
     plt.show()
@@ -195,34 +212,20 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
     plt.show()
 
     bw_sum = bw_conv.sum(axis=0)
-    # [r] = (bw_sum != 0).nonzero()
     r = bw_sum.ravel().nonzero()
-    # [r] = bw_sum.ravel().nonzero()
-    # for item in a:
-        # n = r.extend(item)
-    #n = np.array(r)
     print("r = ")
     print(r)
 
-    hh = 0
-    x1 = 0
-    x2 = 0
     r = np.array(r)
-    #row_r,col_r= r.shape
-    #print(row_r)
-    #print (col_r)
-    # for x in range(1, col_r - 1):
-    # hh_actual = n[x + 1] - n[x]
-    #n = n.tolist()
     v = np.ediff1d(r)
-    # r = r.tolist()
-    # v = [n[i + 1] - n[i] for i in range(len(n) - 1)]
     print("este es v: ")
     print (v)
+
     v = v.tolist()
     max_difference = max(v)
     index_x1 = v.index(max_difference)
     x1_index = index_x1+1
+
     print("este es x1_index")
     print(x1_index)
     r = np.asarray(r)
@@ -230,13 +233,7 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
     x1 = r[0][x1_index]
     x2 = r[0][x1_index - 1]
 
-    #    if hh < hh_actual:
-    #        hh = hh_actual
-    #        x1 = n[x]
-    #        x2 = n[x + 1]
-    y1 = bw_conv[: , x1]
-    #print("Este es y1 de bw_conv")
-    #print (y1)
+    y1 = bw_conv[:, x1]
     y1_index = y1.nonzero()
     y1 = y1_index[0][0]
     print ("la mxima diferencia es:")
