@@ -9,6 +9,9 @@ import numpy as np
 # import Tkinter as Tki
 import cv2
 from matplotlib import pyplot as plt
+from scipy import signal
+from skimage.morphology import skeletonize
+from skimage.morphology import medial_axis
 # import os
 import time
 
@@ -20,27 +23,28 @@ def main():
     hoja_base_cm = 1
 
     factor = 11.5 / 960  # ************Factor px to cm
-    # global factor
-
     corto_px = corto_cm / factor
-    # global corto_px
-
     largo_px = largo_cm / factor
-    # global largo_px
-
     hojabase_px = hoja_base_cm / factor
-    # global hojabase_px
 
     print largo_px
     print corto_px
     print '______________________________________________________'
 
     # ******************************Image reading*****************************************
-    img = cv2.imread('C:\Users\Daniel\Documents\MATLAB\esquejes-2016-08-30\Gui_Final\Baltica_10_03_2016\Foto_1005.TIFF')
+    img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1073_clase_4.TIFF')
     mask, mask2, cnt, cols, rows, res_rotated = segmentation(img)
-    final_category = classification(mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
+    final_image, final_category, hojamm, x1, x2, y1 = classification(mask2, cnt, cols, rows, res_rotated, factor, corto_px, largo_px, hojabase_px)
 
-    print(final_category)
+    plt.imshow(final_image, 'gray')
+    plt.plot(x1,y1,'ro')
+    plt.plot(x2, y1, 'ro')
+    plt.title('Esqueje final')
+    plt.show()
+    # print(final_category)
+    print("It's over")
+
+    print("La distancia entre la base y la primera hoja es:"+str(hojamm))
 
 
 def segmentation(img):
@@ -80,7 +84,7 @@ def segmentation(img):
     x, y, w, h = cv2.boundingRect(cnt2)
     dst_roi = res_rotated[y:y + h, x:x + w]
     thresh3 = thresh2[y:y + h, x:x + w]
-    # global thresh3
+
     cols, rows = dst_roi.shape[:2]
     if rows < cols:
         res_rotated = rotate_and_scale(dst_roi, 1, 90)
@@ -109,6 +113,8 @@ def rotate_and_scale(img, scale_factor=0.5, degrees_ccw=30):
 
 def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_px, h_base_px):
     category = '0'
+    number_neighboring_pixels = 3
+
     if cols < small_px:
         print 'corto'
         category = '1'
@@ -138,13 +144,10 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
     row, col = mask2.shape
 
     a = 0
-    # global a
     # ***************************Get stem's side***********************
     for c in range(col):
         a = np.append(a, (mask2[:, c] > 100).sum())
     part20 = cols * 0.2
-    # part80 = cols * 0.8
-    # sizea = a.size
 
     image20 = a[:int(part20)]
     image80 = a[-int(part20):]
@@ -161,36 +164,89 @@ def classification(mask2, cnt, cols, rows, res_rotated, factor, small_px, large_
 
     if mean20 < mean80:
         print 'Tallo a la izquierda'
-        roi_tallo = image20
-        roi_tallo = roi_tallo[:int(h_base_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print roi_tallo
     else:
         print 'Tallo a la derecha'
-        roi_tallo = image80[::-1]
-        roi_tallo = roi_tallo[:int(h_base_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print roi_tallo
-    # **********To detect Hoja en Base*******************************
-    
-    meanroi = np.argmax(np.bincount(roi_tallo))
-    valuesgtmean = len(roi_tallo[roi_tallo > meanroi + 2])
-    print valuesgtmean
-    if valuesgtmean > 15:
-        print "Hoja en base"
-        classification = '3'
-    else:
-        print "No es hoja en base"
+        mask2 = cv2.flip(mask2, 1)
+        res_rotated = cv2.flip(res_rotated,1)
+# **********To detect Hoja en Base*******************************
 
-    plt.plot(a)
-    plt.ylabel('perfil')
+    plt.imshow(mask2, 'gray')
+    plt.title('Well positioned')
     plt.show()
-    print classification
-    print '______________________________________________________'
 
-    return category
+    ret, binarize_image = cv2.threshold(mask2, 0, 1, cv2.THRESH_BINARY)
+
+    # Get Skeleton of full image
+    skeleton = medial_axis(binarize_image,return_distance=False)
+
+    # Showing results of skeletonization
+    plt.imshow(skeleton, 'gray')
+    plt.title('Skeleton')
+    plt.show()
+
+    bw_conv = signal.convolve2d(skeleton,np.ones((3,3)),mode='same')
+    plt.imshow(bw_conv, 'gray')
+    plt.title('bw_conv')
+    plt.show()
+
+    bw_conv = (bw_conv == number_neighboring_pixels + 1) & binarize_image
+    plt.imshow(bw_conv, 'gray')
+    plt.title('bw_conv')
+    plt.show()
+
+    bw_sum = bw_conv.sum(axis=0)
+    # [r] = (bw_sum != 0).nonzero()
+    r = bw_sum.ravel().nonzero()
+    # [r] = bw_sum.ravel().nonzero()
+    # for item in a:
+        # n = r.extend(item)
+    #n = np.array(r)
+    print("r = ")
+    print(r)
+
+    hh = 0
+    x1 = 0
+    x2 = 0
+    r = np.array(r)
+    #row_r,col_r= r.shape
+    #print(row_r)
+    #print (col_r)
+    # for x in range(1, col_r - 1):
+    # hh_actual = n[x + 1] - n[x]
+    #n = n.tolist()
+    v = np.ediff1d(r)
+    # r = r.tolist()
+    # v = [n[i + 1] - n[i] for i in range(len(n) - 1)]
+    print("este es v: ")
+    print (v)
+    v = v.tolist()
+    max_difference = max(v)
+    index_x1 = v.index(max_difference)
+    x1_index = index_x1+1
+    print("este es x1_index")
+    print(x1_index)
+    r = np.asarray(r)
+    print (r)
+    x1 = r[0][x1_index]
+    x2 = r[0][x1_index - 1]
+
+    #    if hh < hh_actual:
+    #        hh = hh_actual
+    #        x1 = n[x]
+    #        x2 = n[x + 1]
+    y1 = bw_conv[: , x1]
+    #print("Este es y1 de bw_conv")
+    #print (y1)
+    y1_index = y1.nonzero()
+    y1 = y1_index[0][0]
+    print ("la mxima diferencia es:")
+    print (max_difference)
+    print ("x1 es:"+str(x1))
+    print ("x2 es:"+str(x2))
+    print ("y1 es:"+str(y1))
+    hojamm = (11.5 * max_difference / 345) * 10
+
+    return res_rotated, category, hojamm, x1, x2, y1
 
 
 if __name__ == '__main__':
