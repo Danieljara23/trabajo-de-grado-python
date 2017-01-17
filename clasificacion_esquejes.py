@@ -10,12 +10,15 @@ import cv2
 import pymorph
 from matplotlib import pyplot as plt
 from scipy import signal
-from skimage.morphology import skeletonize_3d
+from skimage.morphology import skeletonize_3d,skeletonize
 from skimage.morphology import erosion, dilation
 from skimage.morphology import square
 from skimage.morphology import rectangle
 from skimage import filters
 from skimage.morphology import medial_axis
+from scipy import ndimage as ndi
+from skimage.morphology import watershed
+from skimage.feature import peak_local_max
 # import scipy.misc
 import os
 path=r"G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9"
@@ -102,6 +105,34 @@ def main():
 def segmentation(img):
     # Threshold
     ret, thresh = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
+    image = thresh
+    #----------------------- trying watershed -------------------------------
+    # Generate the markers as local maxima of the distance to the background
+    distance = ndi.distance_transform_edt(image)
+    local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),labels=image)
+    markers = ndi.label(local_maxi)[0]
+    labels = watershed(-distance, markers, mask=image)
+
+    fig, axes = plt.subplots(ncols=3, figsize=(8, 2.7), sharex=True, sharey=True,
+                             subplot_kw={'adjustable': 'box-forced'})
+    ax0, ax1, ax2 = axes
+
+    ax0.imshow(image, cmap=plt.cm.gray, interpolation='nearest')
+    ax0.set_title('Overlapping objects')
+    ax1.imshow(-distance, cmap=plt.cm.jet, interpolation='nearest')
+    ax1.set_title('Distances')
+    ax2.imshow(labels, cmap=plt.cm.spectral, interpolation='nearest')
+    ax2.set_title('Separated objects')
+
+    for ax in axes:
+        ax.axis('off')
+
+    fig.subplots_adjust(hspace=0.01, wspace=0.01, top=0.9, bottom=0, left=0,
+                        right=1)
+    plt.show()
+
+    plt.imshow(distance, 'gray')
+    plt.show
 
     # ----------------
     thresh = erosion(thresh, rectangle(18,1))
