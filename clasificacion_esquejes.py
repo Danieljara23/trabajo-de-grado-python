@@ -7,12 +7,14 @@
 # ****************Libraries needed***************************************
 import numpy as np
 import cv2
+import pymorph
 from matplotlib import pyplot as plt
 from scipy import signal
 from skimage.morphology import skeletonize_3d
 from skimage.morphology import erosion, dilation
 from skimage.morphology import square
 from skimage.morphology import rectangle
+from skimage import filters
 from skimage.morphology import medial_axis
 # import scipy.misc
 import os
@@ -21,6 +23,7 @@ list_all=os.listdir(path)
 
 def main():
     # ***************Variables needed along the algorithm**************
+    loop_flag = True
     small_cm = 8
     large_cm = 9
     hoja_base_cm = 1
@@ -34,35 +37,66 @@ def main():
     print small_px
 
     # ******************************Image reading*****************************************
-    for fl in list_all:
-        if fl.endswith(".TIFF"):
-            print '______________________________________________________'
-            print fl
-            img = cv2.imread(path + "\\" + fl)
-            # img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
-            mask, mask2, cols, rows, res_rotated = segmentation(img)
-            if cols < 200:
-                category = '0'
-                print("nada")
-            else:
-                final_image, skeleton, final_category, hojamm, x1, x2, y1 = classification(mask2, cols, rows, res_rotated, factor,small_px, large_px, hojabase_px)
+    if loop_flag == True:
+        for fl in list_all:
+            if fl.endswith(".TIFF"):
+                print '______________________________________________________'
+                print fl
+                img = cv2.imread(path + "\\" + fl)
+                # img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
+                mask, mask2, cols, rows, res_rotated = segmentation(img)
+                if cols < 200:
+                    category = '0'
+                    print("nada")
+                else:
+                    final_image, bw_conv, skeleton, final_category, hojamm, x1, x2, y1, x3 = classification(mask2, cols, rows, res_rotated, factor,small_px, large_px, hojabase_px)
 
-                fig = plt.figure()
-                a = fig.add_subplot(1, 2, 1)
-                plt.imshow(final_image, 'gray')
-                plt.plot(x1, y1, 'ro')
-                plt.plot(x2, y1, 'ro')
-                plt.title('Esqueje final')
+                    fig = plt.figure()
+                    a = fig.add_subplot(3, 1, 1)
+                    plt.imshow(final_image, 'gray')
+                    plt.plot(x3, y1, 'ro')
+                    plt.plot(x2, y1, 'ro')
+                    plt.title('Esqueje final')
 
-                a = fig.add_subplot(1, 2, 2)
-                plt.imshow(skeleton, 'gray')
-                plt.title('Esqueleto')
-                plt.show()
+                    a = fig.add_subplot(3, 1, 2)
+                    plt.imshow(skeleton, 'gray')
+                    plt.title('Esqueleto')
 
-            # print(final_category)
-            print("It's over")
+                    a = fig.add_subplot(3, 1, 3)
+                    plt.imshow(bw_conv, 'gray')
+                    plt.title('Branch points')
+                    plt.show()
 
-            # print("La distancia entre la base y la primera hoja es:"+str(hojamm))
+                # print(final_category)
+                    print("It's over")
+    else:
+        img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
+        mask, mask2, cols, rows, res_rotated = segmentation(img)
+        if cols < 200:
+            category = '0'
+            print("nada")
+        else:
+            final_image, bw_conv, skeleton, final_category, hojamm, x1, x2, y1, x3 = classification(mask2, cols, rows,
+                                                                                                res_rotated, factor,
+                                                                                                small_px, large_px,
+                                                                                                hojabase_px)
+
+            fig = plt.figure()
+            a = fig.add_subplot(3, 1, 1)
+            plt.imshow(final_image, 'gray')
+            plt.plot(x3, y1, 'ro')
+            plt.plot(x2, y1, 'ro')
+            plt.title('Esqueje final')
+
+            a = fig.add_subplot(3, 1, 2)
+            plt.imshow(skeleton, 'gray')
+            plt.title('Esqueleto')
+
+            a = fig.add_subplot(3, 1, 3)
+            plt.imshow(bw_conv, 'gray')
+            plt.title('Branch points')
+            plt.show()
+        # print("La distancia entre la base y la primera hoja es:"+str(hojamm))
 
 
 def segmentation(img):
@@ -207,8 +241,18 @@ def classification(mask2, cols, rows, res_rotated, factor, small_px, large_px, h
     # Get Skeleton of full image
     # skeleton = medial_axis(binarize_image, return_distance=False)
     skeleton = skeletonize_3d(binarize_image)
+    flip_skel = np.rot90(skeleton,1)
+    flip_skel = cv2.flip(flip_skel, 0)
+    #plt.imshow(flip_skel, 'gray')
+    #plt.show()
+    (i, j) = flip_skel.nonzero()
+    first_white_pixel = i[0]
+    print (first_white_pixel)
+    print ("printing some pixels")
+    print(i)
+    print (j)
     # Showing results of skeletonization
-    # plt.imshow(skeleton, 'gray')
+    #plt.imshow(skeleton, 'gray')
     # plt.title('Skeleton')
     # plt.show()
 
@@ -230,35 +274,43 @@ def classification(mask2, cols, rows, res_rotated, factor, small_px, large_px, h
     print(r)
 
     r = np.array(r)
-    #  if r.item(0) > 50:
-    #     r = r[:-1]
-    #    np.insert(r,0,9)
-    # print("r = ")
-    # print(r)
-    v = np.ediff1d(r)
-    print("este es v: ")
-    print (v)
 
-    v = v.tolist()
-    max_difference = max(v)
-    index_x1 = v.index(max_difference)
-    x1_index = index_x1+1
+    # ------------------replace
 
-    print("este es x1_index")
-    print(x1_index)
-    r = np.asarray(r)
-    print (r)
-    x1 = r[0][x1_index]
-    x2 = r[0][x1_index - 1]
+    flip_bw_conv = np.rot90(bw_conv, 1)
+    flip_bw_conv = cv2.flip(flip_bw_conv, 0)
+    # plt.imshow(flip_bw_conv, 'gray')
+    # plt.show()
+    (x_s, y_s) = flip_bw_conv.nonzero()
+    first_branch_x = x_s[0]
+    first_branch_y = y_s[0]
+    # ---------------------------------bueno
+    # v = np.ediff1d(r)
+    # print("este es v: ")
+    # print (v)
 
-    y1 = bw_conv[:, x1]
-    y1_index = y1.nonzero()
-    y1 = y1_index[0][0]
+    # v = v.tolist()
+    # max_difference = max(v)
+    # index_x1 = v.index(max_difference)
+    # x1_index = index_x1+1
+
+    # print("este es x1_index")
+    # print(x1_index)
+    # r = np.asarray(r)
+    # print (r)
+    # x1 = r[0][x1_index]
+    # x2 = r[0][x1_index - 1]
+
+    # y1 = bw_conv[:, x1]
+    # y1_index = y1.nonzero()
+    # y1 = y1_index[0][0]
+    # --------------------------------------- Fin_ bueno
+    max_difference = first_branch_x - first_white_pixel
     print ("la mxima diferencia es:")
     print (max_difference)
-    print ("x1 es:"+str(x1))
-    print ("x2 es:"+str(x2))
-    print ("y1 es:"+str(y1))
+    print ("x1 es:"+str(first_white_pixel))
+    print ("x2 es:"+str(first_branch_x))
+    print ("y1 es:"+str(first_branch_y))
     hojamm = (11.5 * max_difference / 345) * 10
     # ----------------------CLASIFICACION FINAL ----------------------
     flag_h_base = False
@@ -278,8 +330,11 @@ def classification(mask2, cols, rows, res_rotated, factor, small_px, large_px, h
     elif cols < 200:
         print 'nada'
         category = '0'
-
-    return res_rotated,skeleton,  category, hojamm, x1, x2, y1
+    x3 = first_white_pixel
+    x2 = first_branch_x
+    x1 = first_branch_x
+    y1 = first_branch_y
+    return res_rotated,  bw_conv, skeleton,  category, hojamm, x1, x2, y1, x3
 
 
 if __name__ == '__main__':
