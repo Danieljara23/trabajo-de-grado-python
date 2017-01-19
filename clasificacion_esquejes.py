@@ -1,60 +1,293 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Sep 18 00:52:16 2016
+# **********************************************************************
+# Algoritmo para clasificacion de esquejes- Daniel Jaramillo Grisales
+#             Facultad de Ingenieria Electronica
+#                 Universidad de Antioquia
+# ***********************************************************************
 
-@author: Sebastian Guzman
-"""
+# ****************Libraries needed***************************************
 import numpy as np
-import Tkinter as Tki
 import cv2
+import pymorph
 from matplotlib import pyplot as plt
-#from scipy import stats
-
-
+from scipy import signal
+from skimage.morphology import skeletonize_3d,skeletonize
+from skimage.morphology import erosion, dilation
+from skimage.morphology import square
+from skimage.morphology import rectangle
+from skimage import filters
+from skimage.morphology import medial_axis
+from scipy import ndimage as ndi
+from skimage.morphology import watershed
+from skimage.feature import peak_local_max
+from skimage.measure import regionprops
+import scipy.misc
 import os
-
-import time
-
-#pathCortos = r"C:\Users\Sebastian Guzman\Google Drive\Baltica_21_09_2016\cortos\orientacion2"
-#pathLargos = r"C:\Users\Sebastian Guzman\Google Drive\Baltica_21_09_2016\Largos\orientacion3"
-#pathHB = r"C:\Users\Sebastian Guzman\Google Drive\Baltica_21_09_2016\HBase\orientacion3"
-#path = pathHB
-#listEsqueje = os.listdir(path)
-
+path=r"G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9"
+list_all=os.listdir(path)
 
 def main():
-    corto_cm = 8
-    largo_cm = 9
-    Hoja_base_cm = 1
-    global factor
-    factor = 11.5 / 960
-    global corto_px
-    corto_px = corto_cm / factor
-    global largo_px
-    largo_px = largo_cm / factor
-    global hojabase_px
-    hojabase_px = Hoja_base_cm / factor
-    print largo_px
-    print corto_px
-    #for fl in listEsqueje:
-    #    if fl.endswith(".TIFF"):
-    print '______________________________________________________'
-    #print fl
-    #img = cv2.imread(path + "\\" + fl)
-    img = cv2.imread('C:\Users\Daniel\Documents\MATLAB\esquejes-2016-08-30\Gui_Final\Baltica_10_03_2016\Foto_1005.TIFF')
-    classification, mask, cnt,cols,rows = segmentacion(img)
-    row, col = thresh3.shape
+    # ***************Variables needed along the algorithm**************
+    loop_flag = True
+    small_cm = 8
+    large_cm = 9
+    hoja_base_cm = 1
 
-    global a
+    factor = 11.5 / 960  # ************Factor px to cm
+    small_px = small_cm / factor
+    large_px = large_cm / factor
+    hojabase_px = hoja_base_cm / factor
+
+    print large_px
+    print small_px
+
+    # ******************************Image reading*****************************************
+    if loop_flag == True:
+        for fl in list_all:
+            if fl.endswith(".TIFF"):
+                print '______________________________________________________'
+                print fl
+                img = cv2.imread(path + "\\" + fl)
+                # img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
+                mask, mask2, cols, rows, res_rotated = segmentation(img)
+                if cols < 200:
+                    category = '0'
+                    print("nada")
+                else:
+                    final_image, bw_conv, skeleton, final_category, hojamm, x1, x2, y1, x3 = classification(mask2, cols, rows, res_rotated, factor,small_px, large_px, hojabase_px)
+
+                    fig = plt.figure()
+                    a = fig.add_subplot(3, 1, 1)
+                    plt.imshow(final_image, 'gray')
+                    plt.plot(x3, y1, 'ro')
+                    plt.plot(x2, y1, 'ro')
+                    plt.title('Esqueje final')
+
+                    a = fig.add_subplot(3, 1, 2)
+                    plt.imshow(skeleton, 'gray')
+                    plt.title('Esqueleto')
+
+                    a = fig.add_subplot(3, 1, 3)
+                    plt.imshow(bw_conv, 'gray')
+                    plt.title('Branch points')
+                    plt.show()
+
+                # print(final_category)
+                    print("It's over")
+    else:
+        img = cv2.imread('G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9\Foto_1028_clase_2.TIFF')
+        mask, mask2, cols, rows, res_rotated = segmentation(img)
+        if cols < 200:
+            category = '0'
+            print("nada")
+        else:
+            final_image, bw_conv, skeleton, final_category, hojamm, x1, x2, y1, x3 = classification(mask2, cols, rows,
+                                                                                                res_rotated, factor,
+                                                                                                small_px, large_px,
+                                                                                                hojabase_px)
+
+            fig = plt.figure()
+            a = fig.add_subplot(3, 1, 1)
+            plt.imshow(final_image, 'gray')
+            plt.plot(x3, y1, 'ro')
+            plt.plot(x2, y1, 'ro')
+            plt.title('Esqueje final')
+
+            a = fig.add_subplot(3, 1, 2)
+            plt.imshow(skeleton, 'gray')
+            plt.title('Esqueleto')
+
+            a = fig.add_subplot(3, 1, 3)
+            plt.imshow(bw_conv, 'gray')
+            plt.title('Branch points')
+            plt.show()
+        # print("La distancia entre la base y la primera hoja es:"+str(hojamm))
+
+
+def segmentation(img):
+    # Threshold
+    ret, thresh = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
+    image = thresh
+    #----------------------- trying watershed -------------------------------
+    # Generate the markers as local maxima of the distance to the background
+#    distance = ndi.distance_transform_edt(image)
+#    local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),labels=image)
+#    markers = ndi.label(local_maxi)[0]
+#    labels = watershed(-distance, markers, mask=image)
+
+#   fig, axes = plt.subplots(ncols=3, figsize=(8, 2.7), sharex=True, sharey=True,
+#                             subplot_kw={'adjustable': 'box-forced'})
+#    ax0, ax1, ax2 = axes
+
+#    ax0.imshow(image, cmap=plt.cm.gray, interpolation='nearest')
+#    ax0.set_title('Overlapping objects')
+#    ax1.imshow(-distance, cmap=plt.cm.jet, interpolation='nearest')
+#    ax1.set_title('Distances')
+#    ax2.imshow(labels, cmap=plt.cm.spectral, interpolation='nearest')
+#    ax2.set_title('Separated objects')
+
+#    for ax in axes:
+#        ax.axis('off')
+
+#    fig.subplots_adjust(hspace=0.01, wspace=0.01, top=0.9, bottom=0, left=0,
+#                        right=1)
+#    plt.show()
+
+#    plt.imshow(distance, 'gray')
+#    plt.show
+
+    # ----------------
+    thresh = erosion(thresh, rectangle(18,1))
+    thresh = dilation(thresh, rectangle(18, 1))
+    thresh = erosion(thresh, rectangle(1, 18))
+    thresh = dilation(thresh, rectangle(1, 18))
+    # se = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 1))
+    # thresh = cv2.erode(thresh, se, iterations=1)
+    # thresh = cv2.dilate(thresh, se, iterations=1)
+    # se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 18))
+    # thresh = cv2.erode(thresh, se, iterations=1)
+    # thresh = cv2.dilate(thresh, se, iterations=1)
+    # ---------------
+    # plt.imshow(thresh, 'gray')
+    # plt.title('After dilate & erode')
+    # plt.show()
+
+    # ---------------------------------------------------------------------------
+    im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    print ("contours")
+    print(contours)
+    if not contours:
+        thresh2 = img
+        thresh3 = img
+        cols = 100
+        rows = 100
+        res_rotated = img
+    else:
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        cnt = contours[0]
+        thresh[...] = 0
+        cv2.drawContours(thresh, [cnt], 0, 255, cv2.FILLED)
+        true_image = cv2.drawContours(thresh, [cnt], 0, 255, cv2.FILLED)
+        res = cv2.bitwise_and(img, img, mask=thresh)
+
+        # getting edges-rotating edges
+        center_contour, size_contour, theta = cv2.fitEllipse(cnt)  # cv2.minAreaRect(cnt)
+        res_rotated = rotate_and_scale(res, 1, theta)
+
+        # Thresholding and getting edges again
+        ret, thresh2 = cv2.threshold(res_rotated[:, :, 1], 5, 255, cv2.THRESH_BINARY)
+
+        im2, contours2, hierarchy2 = cv2.findContours(thresh2, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        contours2 = sorted(contours2, key=cv2.contourArea, reverse=True)
+        cnt2 = contours2[0]
+
+        # thresh2[...] = 0
+        # plt.imshow(thresh2)
+        # plt.show()
+
+        cv2.drawContours(thresh2, [cnt2], 0, 255, cv2.FILLED)
+
+        # plt.imshow(thresh2)
+        # plt.title('Filled')
+        # plt.show()
+
+        #-----------------------
+        image = true_image
+
+        binarize_image = dilation(image, square(3))
+        binarize_image = dilation(binarize_image, square(3))
+        binarize_image = dilation(binarize_image, square(3))
+
+        binarize_image = erosion(binarize_image, square(3))
+        binarize_image = erosion(binarize_image, square(3))
+        image = erosion(binarize_image, square(3))
+
+
+
+        distance = ndi.distance_transform_edt(image)
+        local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)), labels=image)
+        markers = ndi.label(local_maxi)[0]
+        labels = watershed(-distance, markers, mask=image)
+
+        fig, axes = plt.subplots(ncols=3, figsize=(8, 2.7), sharex=True, sharey=True,subplot_kw={'adjustable': 'box-forced'})
+        ax0, ax1, ax2 = axes
+
+        ax0.imshow(image, cmap=plt.cm.gray, interpolation='nearest')
+        ax0.set_title('Overlapping objects')
+        ax1.imshow(-distance, cmap=plt.cm.jet, interpolation='nearest')
+        ax1.set_title('Distances')
+        ax2.imshow(labels, cmap=plt.cm.spectral, interpolation='nearest')
+        ax2.set_title('Separated objects')
+
+        for ax in axes:
+            ax.axis('off')
+
+        fig.subplots_adjust(hspace=0.01, wspace=0.01, top=0.9, bottom=0, left=0,
+                                right=1)
+        plt.show()
+
+        plt.imshow(distance, 'gray')
+        plt.show
+
+        #-----------------------
+
+
+        x, y, w, h = cv2.boundingRect(cnt2)
+        dst_roi = res_rotated[y:y + h, x:x + w]
+        thresh3 = thresh2[y:y + h, x:x + w]
+
+        cols, rows = dst_roi.shape[:2]
+        if rows < cols:
+            res_rotated = rotate_and_scale(dst_roi, 1, 90)
+            thresh3 = rotate_and_scale(thresh3, 1, 90)
+        cols, rows = dst_roi.shape[:2]
+
+    return thresh2, thresh3, cols, rows, res_rotated
+
+def rotate_and_scale(img, scale_factor=0.5, degrees_ccw=30):
+    (old_y, old_x) = img.shape[:2]
+    m = cv2.getRotationMatrix2D(center=(old_x / 2, old_y / 2), angle=degrees_ccw, scale=scale_factor)
+
+    new_x, new_y = old_x * scale_factor, old_y * scale_factor
+    r = np.deg2rad(degrees_ccw)
+    new_x, new_y = (abs(np.sin(r) * new_y) + abs(np.cos(r) * new_x), abs(np.sin(r) * new_x) + abs(np.cos(r) * new_y))
+
+    (tx, ty) = ((new_x - old_x) / 2, (new_y - old_y) / 2)
+    m[0, 2] += tx
+    m[1, 2] += ty
+
+    rotated_img = cv2.warpAffine(img, m, dsize=(int(new_x), int(new_y)))
+    return rotated_img
+
+
+def classification(mask2, cols, rows, res_rotated, factor, small_px, large_px, h_base_px):
+    category = '0'
+    number_neighboring_pixels = 3
+
+
+
+    # plt.imshow(mask2, 'gray')
+    # plt.title('thresh3-mask2')
+    # plt.show()
+
+    # **************************Pre-proccess*******************
+    b, g, r = cv2.split(res_rotated)
+    res_rotated = cv2.merge([r, g, b])
+    # plt.imshow(res_rotated, 'gray')
+    # plt.title('FINAL')
+    # plt.show()
+
+    row, col = mask2.shape
+
     a = 0
-
+    # ***************************Get stem's side***********************
     for c in range(col):
-        a = np.append(a, (thresh3[:, c] > 100).sum())
+        a = np.append(a, (mask2[:, c] > 100).sum())
     part20 = cols * 0.2
-    # print part20
-    part80 = cols * 0.8
-    # print part80
-    sizea = a.size
+
+
+
+
 
     image20 = a[:int(part20)]
     image80 = a[-int(part20):]
@@ -71,157 +304,167 @@ def main():
 
     if mean20 < mean80:
         print 'Tallo a la izquierda'
-        roi_tallo = image20
-        roi_tallo = roi_tallo[:int(hojabase_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print roi_tallo
     else:
         print 'Tallo a la derecha'
-        roi_tallo = image80[::-1]
-        roi_tallo = roi_tallo[:int(hojabase_px)]
-        roi_tallo = np.array(roi_tallo)
-        roi_tallo = roi_tallo[roi_tallo > 15]
-        print  roi_tallo
+        mask2 = cv2.flip(mask2, 1)
+        res_rotated = cv2.flip(res_rotated, 1)
 
-    meanroi = np.argmax(np.bincount(roi_tallo))
-    print "valorr que mas se repite"
-    print meanroi
-    valuesgtmean = len(roi_tallo[roi_tallo > meanroi + 2])
-    print valuesgtmean
-    if valuesgtmean > 15:
-        print "Hoja en base"
-        classification = '3'
-    else:
-        print "No es hoja en base"
+    real_image_20 = mask2[:,:int(part20)]
 
-    plt.plot(a)
-    plt.ylabel('perfil')
+    plt.imshow(real_image_20)
+    plt.title('part20')
     plt.show()
-    print classification
-    print '______________________________________________________'
 
+    #ret, thresh2 = cv2.threshold(res_rotated[:, :, 1], 5, 255, cv2.THRESH_BINARY)
 
-def segmentacion(img):
-    t = time.time()  # TIC
-    global thresh3
-    # UMBRALIZADO
-    ret, thresh = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
-
-    #----------------
-    SE = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 1))
-    thresh = cv2.erode(thresh, SE, iterations=1)
-    thresh = cv2.dilate(thresh, SE, iterations=1)
-    SE = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 18))
-    thresh = cv2.erode(thresh, SE, iterations=1)
-    thresh = cv2.dilate(thresh, SE, iterations=1)
-    #---------------
-
-    #plt.imshow(thresh,'gray')
-    #plt.title('thresh')
-    #plt.show()
-    im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)
-    cnt = contours[0]
-    thresh[...] = 0
-    cv2.drawContours(thresh, [cnt], 0, 255, cv2.FILLED)
-    res = cv2.bitwise_and(img, img, mask=thresh)
-
-    #    plt.imshow(res,'gray')
-    #    plt.title('res')
-    #    plt.show()
-    #
-
-
-    # OBTENIENDO CONTORNOS Y ROTANDO
-    centerContour, sizeContour, theta = cv2.fitEllipse(cnt)  # cv2.minAreaRect(cnt)
-    resRotated = rotateAndScale(res, 1, theta)
-
-    # UMBRALIZA Y OBTIENE NUEVAMENTE EL CONTORNO
-    ret, thresh2 = cv2.threshold(resRotated[:, :, 1], 5, 255, cv2.THRESH_BINARY)
-    #    plt.imshow(thresh2,'gray')
-    #    plt.title('thresh2')
-    #    plt.show()
-
-    im2, contours2, hierarchy2 = cv2.findContours(thresh2, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    im2, contours2, hierarchy2 = cv2.findContours(real_image_20, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    im2, contours, hierarchy = cv2.findContours(real_image_20, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     contours2 = sorted(contours2, key=cv2.contourArea, reverse=True)
     cnt2 = contours2[0]
-
-    thresh2[...] = 0
-    cv2.drawContours(thresh2, [cnt2], 0, 255, cv2.FILLED)
-    #    plt.imshow(thresh2,'gray')
-    #    plt.title('thresh2')
-    #    plt.show()
+    cv2.drawContours(real_image_20, [cnt2], 0, 255, cv2.FILLED)
 
     x, y, w, h = cv2.boundingRect(cnt2)
-    # cv2.rectangle(resRotated,(x,y),(x+w,y+h),(0,255,0),7)
-    dst_roi = resRotated[y:y + h, x:x + w]
-    thresh3 = thresh2[y:y + h, x:x + w]
-    #    plt.imshow(dst_roi,'gray')
-    #    plt.title('dest_roi')
-    #    plt.show()
+    dst_roi = res_rotated[y:y + h, x:x + w]
+    thresh3 = real_image_20[y:y + h, x:x + w]
 
     cols, rows = dst_roi.shape[:2]
     if rows < cols:
-        resRotated = rotateAndScale(dst_roi, 1, 90)
-        thresh3 = rotateAndScale(thresh3, 1, 90)
+        res_rotated = rotate_and_scale(dst_roi, 1, 90)
+        thresh3 = rotate_and_scale(thresh3, 1, 90)
     cols, rows = dst_roi.shape[:2]
-    print rows
-    print 'Imprimí Rows'
-    print cols
-    clasificacion = '0'
-    if cols < corto_px :
+
+    #real_image_20 = erosion(real_image_20, rectangle(10, 1))
+    #real_image_20 = erosion(real_image_20, rectangle(10, 1))
+    #real_image_20 = erosion(real_image_20, rectangle(10, 1))
+    # thresh = dilation(thresh, rectangle(18, 1))
+
+    # props = regionprops(real_image_20)
+    # cut_orientation = props[0]['orientation']
+    # print("Orientation is:"+str(cut_orientation))
+    # correct_image = rotate_and_scale(real_image_20, 1, -cut_orientation)
+    # second_correct_image = scipy.misc.imrotate(real_image_20, -cut_orientation, interp='bilinear')
+
+    plt.imshow(thresh3)
+    plt.title('rotated_image_tallo')
+    plt.show()
+
+    # plt.imshow(thresh3)
+    # plt.title('rotated_image_tallo_2')
+    # plt.show()
+
+
+# **********To detect Hoja en Base*******************************
+
+    # plt.imshow(mask2, 'gray')
+    # plt.title('Well positioned')
+    # plt.show()
+
+    ret, binarize_image = cv2.threshold(mask2, 0, 1, cv2.THRESH_BINARY)
+
+    binarize_image = erosion(binarize_image, square(3))
+    binarize_image = erosion(binarize_image, square(3))
+    binarize_image = erosion(binarize_image, square(3))
+
+    binarize_image = dilation(binarize_image, square(3))
+    binarize_image = dilation(binarize_image, square(3))
+    binarize_image = dilation(binarize_image, square(3))
+    # Get Skeleton of full image
+    # skeleton = medial_axis(binarize_image, return_distance=False)
+    skeleton = skeletonize_3d(binarize_image)
+    flip_skel = np.rot90(skeleton,1)
+    flip_skel = cv2.flip(flip_skel, 0)
+    #plt.imshow(flip_skel, 'gray')
+    #plt.show()
+    (i, j) = flip_skel.nonzero()
+    first_white_pixel = i[0]
+    print (first_white_pixel)
+    print ("printing some pixels")
+    print(i)
+    print (j)
+    # Showing results of skeletonization
+    #plt.imshow(skeleton, 'gray')
+    # plt.title('Skeleton')
+    # plt.show()
+
+    bw_conv = signal.convolve2d(skeleton, np.ones((3, 3)), mode='same')
+    # plt.imshow(bw_conv, 'gray')
+    # plt.title('bw_conv')
+    # plt.show()
+
+    bw_conv = (bw_conv == number_neighboring_pixels + 1) & binarize_image
+    # plt.imshow(bw_conv, 'gray')
+    # plt.title('bw_conv')
+    # plt.show()
+
+    bw_sum = bw_conv.sum(axis=0)
+    r = bw_sum.ravel().nonzero()
+
+    # r[0][5] = 3
+    print("r = ")
+    print(r)
+
+    r = np.array(r)
+
+    # ------------------replace
+
+    flip_bw_conv = np.rot90(bw_conv, 1)
+    flip_bw_conv = cv2.flip(flip_bw_conv, 0)
+    # plt.imshow(flip_bw_conv, 'gray')
+    # plt.show()
+    (x_s, y_s) = flip_bw_conv.nonzero()
+    first_branch_x = x_s[0]
+    first_branch_y = y_s[0]
+    # ---------------------------------bueno
+    # v = np.ediff1d(r)
+    # print("este es v: ")
+    # print (v)
+
+    # v = v.tolist()
+    # max_difference = max(v)
+    # index_x1 = v.index(max_difference)
+    # x1_index = index_x1+1
+
+    # print("este es x1_index")
+    # print(x1_index)
+    # r = np.asarray(r)
+    # print (r)
+    # x1 = r[0][x1_index]
+    # x2 = r[0][x1_index - 1]
+
+    # y1 = bw_conv[:, x1]
+    # y1_index = y1.nonzero()
+    # y1 = y1_index[0][0]
+    # --------------------------------------- Fin_ bueno
+    max_difference = first_branch_x - first_white_pixel
+    print ("la mxima diferencia es:")
+    print (max_difference)
+    print ("x1 es:"+str(first_white_pixel))
+    print ("x2 es:"+str(first_branch_x))
+    print ("y1 es:"+str(first_branch_y))
+    hojamm = (11.5 * max_difference / 345) * 10
+    # ----------------------CLASIFICACION FINAL ----------------------
+    flag_h_base = False
+    if max_difference < h_base_px:
+        category = '3'
+        flag_h_base = True
+
+    if cols < small_px:
         print 'corto'
-        clasificacion = '1'
-    elif cols > largo_px:
+        category = '1'
+    elif (cols > large_px) & (flag_h_base == False):
         print 'largo'
-        clasificacion = '2'
-    elif ((cols > corto_px) & (cols < largo_px)):
+        category = '2'
+    elif (cols > small_px) & (cols < large_px):
         print 'ideal'
-        clasificacion = 4
+        category = 4
     elif cols < 200:
         print 'nada'
-        clasificacion = '0'
-    #--------------------------------------------
-
-    #--------------------------------------------
-
-    plt.imshow(thresh3, 'gray')
-    plt.title('thresh3')
-    plt.show()
-
-    b, g, r = cv2.split(resRotated)  # get b,g,r
-    resRotated = cv2.merge([r, g, b])  # switch it to rgb
-    plt.imshow(resRotated, 'gray')
-    plt.title('FINAL')
-    plt.show()
-    elapsed = time.time() - t
-    print elapsed
-    return clasificacion, thresh2, cnt2,cols,rows
-
-
-def rotateAndScale(img, scaleFactor=0.5, degreesCCW=30):
-    (oldY, oldX) = img.shape[:2]  # note: numpy uses (y,x) convention but most OpenCV functions use (x,y)
-    M = cv2.getRotationMatrix2D(center=(oldX / 2, oldY / 2), angle=degreesCCW,
-                                scale=scaleFactor)  # rotate about center of image.
-
-    # choose a new image size.
-    newX, newY = oldX * scaleFactor, oldY * scaleFactor
-    # include this if you want to prevent corners being cut off
-    r = np.deg2rad(degreesCCW)
-    newX, newY = (abs(np.sin(r) * newY) + abs(np.cos(r) * newX), abs(np.sin(r) * newX) + abs(np.cos(r) * newY))
-
-    # the warpAffine function call, below, basically works like this:
-    # 1. apply the M transformation on each pixel of the original image
-    # 2. save everything that falls within the upper-left "dsize" portion of the resulting image.
-
-    # So I will find the translation that moves the result to the center of that region.
-    (tx, ty) = ((newX - oldX) / 2, (newY - oldY) / 2)
-    M[0, 2] += tx  # third column of matrix holds translation, which takes effect after rotation.
-    M[1, 2] += ty
-
-    rotatedImg = cv2.warpAffine(img, M, dsize=(int(newX), int(newY)))
-    return rotatedImg
+        category = '0'
+    x3 = first_white_pixel
+    x2 = first_branch_x
+    x1 = first_branch_x
+    y1 = first_branch_y
+    return res_rotated,  bw_conv, skeleton,  category, hojamm, x1, x2, y1, x3
 
 
 if __name__ == '__main__':
