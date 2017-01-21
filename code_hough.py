@@ -10,7 +10,7 @@ import cv2
 import os
 from matplotlib import pyplot as plt
 from skimage.morphology import erosion, dilation
-from skimage.morphology import rectangle, disk
+from skimage.morphology import rectangle, disk,square, closing
 from skimage import morphology
 from skimage.color import rgb2gray
 from scipy import ndimage
@@ -18,9 +18,11 @@ from skimage.measure import label
 from skimage.measure import regionprops
 import scipy.misc
 import math
-import skimage.io
-from mpl_toolkits.axes_grid import AxesGrid
-from skimage.io import MultiImage
+from skimage.io import concatenate_images, ImageCollection
+from skimage.feature import canny
+from skimage.filters import threshold_otsu
+from scipy import ndimage as ndi
+from PIL import Image
 
 path=r"G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9"
 list_all=os.listdir(path)
@@ -41,38 +43,45 @@ def main():
                 print fl
                 image = cv2.imread(path + "\\" + fl)
                 gray_image = rgb2gray(image)
-                thresh_mask = segmentation(image)
+                thresh_mask, presence = segmentation(image)
+                if presence == True:
 
-                #plt.imshow(thresh_mask)
-                #plt.title('Esta es la imagen binarizada')
-                #plt.show()
+                    # plt.imshow(thresh_mask)
+                    # plt.title("imagen despues de segmentacion")
+                    # plt.show()
 
-                stem_binary = get_stem(thresh_mask)
-                degrees = get_orientation(stem_binary,thresh_mask)
-                correct_stem = rotate(degrees, thresh_mask, stem_binary)
-                correct_stem, size= well_position(correct_stem)
-                x_1, y_1, x_2, y_2 = get_h_position(correct_stem,fl)
-                hoja_base = is_hoja_base(x_1,y_1, x_2, y_2, hoja_base_cm)
-                category = clasification(small_cm, large_cm, size,hoja_base)
+                    stem_binary = get_stem(thresh_mask)
+                    degrees = get_orientation(stem_binary, thresh_mask)
+                    correct_stem = rotate(degrees, thresh_mask, stem_binary)
+                    correct_stem, size = well_position(correct_stem)
+                    x_1, y_1, x_2, y_2 = get_h_position(correct_stem, fl, image)
+                    hoja_base = is_hoja_base(x_1, y_1, x_2, y_2, hoja_base_cm)
+                    category = clasification(small_cm, large_cm, size, hoja_base)
+                elif presence == False:
+                    category = '4'
     else:
         print '______________________________________________________'
-        fl = "Foto_1118_clase_2.TIFF"
+        fl = "Foto_1025_clase_2.TIFF"
         print fl
         image = cv2.imread(path + "\\" + fl)
         gray_image = rgb2gray(image)
-        thresh_mask = segmentation(image)
+        thresh_mask, presence = segmentation(image)
+        print (presence)
+        if presence == True:
 
-        plt.imshow(thresh_mask)
-        plt.title('Esta es la imagen binarizada')
-        plt.show()
+            #plt.imshow(thresh_mask)
+            #plt.title("imagen despues de segmentacion")
+            #plt.show()
 
-        stem_binary = get_stem(thresh_mask)
-        degrees = get_orientation(stem_binary, thresh_mask)
-        correct_stem = rotate(degrees, thresh_mask, stem_binary)
-        correct_stem, size = well_position(correct_stem)
-        x_1, y_1, x_2, y_2 = get_h_position(correct_stem, fl)
-        hoja_base = is_hoja_base(x_1, y_1, x_2, y_2, hoja_base_cm)
-        category = clasification(small_cm, large_cm, size, hoja_base)
+            stem_binary = get_stem(thresh_mask)
+            degrees = get_orientation(stem_binary, thresh_mask)
+            correct_stem = rotate(degrees, thresh_mask, stem_binary)
+            correct_stem, size = well_position(correct_stem)
+            x_1, y_1, x_2, y_2 = get_h_position(correct_stem, fl, image)
+            hoja_base = is_hoja_base(x_1, y_1, x_2, y_2, hoja_base_cm)
+            category = clasification(small_cm, large_cm, size, hoja_base)
+        elif presence == False:
+            category = '4'
 
 def convert_umbrals(small_cm, large_cm, hoja_base_cm):
 
@@ -85,54 +94,81 @@ def convert_umbrals(small_cm, large_cm, hoja_base_cm):
     return small_px, large_px, hojabase_px
 
 
-def color_spaces(r,g,b):
-    cmyk_scale = 100
-
-    if (r == 0) and (g == 0) and (b == 0):
-        # black
-        return 0, 0, 0, cmyk_scale
-
-    # rgb [0,255] -> cmy [0,1]
-    c = 1 - r / 255.
-    m = 1 - g / 255.
-    y = 1 - b / 255.
-
-    # extract out k [0,1]
-    min_cmy = min(c, m, y)
-    c = (c - min_cmy) / (1 - min_cmy)
-    m = (m - min_cmy) / (1 - min_cmy)
-    y = (y - min_cmy) / (1 - min_cmy)
-    k = min_cmy
-
-    # rescale to the range [0,cmyk_scale]
-    return c*cmyk_scale, m*cmyk_scale, y*cmyk_scale, k*cmyk_scale
-
 
 def segmentation(img):
     ret, thresh_mask = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
+    cmyk = Image.convert("CMYK",img)
+
+
+    plt.imshow(cmyk)
+    plt.title('CMYK')
+    plt.show()
+    se = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    thresh_mask = cv2.dilate(thresh_mask, se, iterations=2)
+    #thresh_mask = dilation(thresh_mask, disk(5))
+    #thresh_mask = dilation(thresh_mask, disk(5))
+    #
+    im_floodfill = thresh_mask.copy()
+
+    # Mask used to flood filling.
+    # Notice the size needs to be 2 pixels than the image.
+    h, w = thresh_mask.shape[:2]
+    mask = np.zeros((h + 2, w + 2), np.uint8)
+
+    # Floodfill from point (0, 0)
+    cv2.floodFill(im_floodfill, mask, (0, 0), 255);
+
+    # Invert floodfilled image
+    im_floodfill_inv = cv2.bitwise_not(im_floodfill)
+
+    # Combine the two images to get the foreground.
+    im_out = thresh_mask | im_floodfill_inv
+    #edges = canny(thresh_mask / 255.)
+    #thresh_mask = ndimage.binary_fill_holes(thresh_mask)
+    #thresh_mask = erosion(im_out, rectangle(18, 1))
+    #thresh_mask = erosion(thresh_mask, rectangle(1, 18))
+    se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
+    thresh_mask = cv2.erode(thresh_mask, se, iterations=2)
+
+    #plt.imshow(thresh_mask)
+    #plt.title('canny')
+    #plt.show()
+    #thresh_mask_aux = thresh_mask
+
     im2, contours, hierarchy = cv2.findContours(thresh_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     print ("contours")
     if not contours:
         print ("Contours does not find anything")
+        presence = False
     else:
+        presence = True
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
-        thresh_mask[...] = 0
-        cv2.drawContours(thresh_mask, [contours[0]], 0, 255, cv2.FILLED)
-        # Esqueje binarizado hasta este punto
-        #plt.imshow(thresh_mask)
-        #plt.title('Esta es la imagen binarizada')
-        #plt.show()
+        biggest = contours[0]
+        area_biggest = cv2.contourArea(biggest)
 
-        thresh_mask = erosion(thresh_mask, rectangle(18, 1))
-        thresh_mask = dilation(thresh_mask, rectangle(18, 1))
-        thresh_mask = erosion(thresh_mask, rectangle(1, 18))
-        thresh_mask = dilation(thresh_mask, rectangle(1, 18))
+        if area_biggest < 200:
+            presence = False
+        else:
+            thresh_mask[...] = 0
+            cv2.drawContours(thresh_mask, [contours[0]], 0, 255, cv2.FILLED)
 
-        # plt.imshow(thresh_mask)
-        # plt.title('Esta es la imagen binarizada despues de dilatacion-erosion')
-        # plt.show()
 
-        return thresh_mask
+            #thresh_mask = erosion(thresh_mask, rectangle(18, 1))
+            #thresh_mask = dilation(thresh_mask, rectangle(18, 1))
+            #thresh_mask = erosion(thresh_mask, rectangle(1, 18))
+            #thresh_mask = dilation(thresh_mask, rectangle(1, 18))
+            se = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 1))
+            thresh_mask = cv2.erode(thresh_mask, se, iterations=1)
+            thresh_mask = cv2.dilate(thresh_mask, se, iterations=1)
+            se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 18))
+            thresh_mask = cv2.erode(thresh_mask, se, iterations=1)
+            thresh_mask = cv2.dilate(thresh_mask, se, iterations=1)
+
+            # plt.imshow(thresh_mask)
+            # plt.title('Esta es la imagen binarizada despues de dilatacion-erosion')
+            # plt.show()
+
+    return thresh_mask, presence
 
 def is_hoja_base(x_1, y_1, x_2, y_2, hoja_base_cm):
     factor = 11.5 / 960
@@ -172,8 +208,11 @@ def get_stem(thresh_mask):
     h_2 = cv2.convertScaleAbs(h_2)
     h_2 = area_filter(h_2)
 
-    g = dilation(h_2, disk(15))
-    g = dilation(g, disk(15))
+    kernel = np.ones((3, 5), np.uint8)
+    g = cv2.dilate(h_2, kernel, iterations=2)
+
+    #g = dilation(h_2, disk(15))
+    #g = dilation(g, disk(15))
     #plt.imshow(g,'gray')
     #plt.title('g')
     #plt.show()
@@ -241,7 +280,10 @@ def get_orientation(stem, binary_cut):
     label_img = label(thin_line, connectivity=thin_line.ndim)
     props = regionprops(label_img)
     # centroid of first labeled object
-    stem_orientation = np.rad2deg(props[0].orientation)
+    if not props:
+        stem_orientation = 90
+    else:
+        stem_orientation = np.rad2deg(props[0].orientation)
     #print("The orientation is:")
     #print(stem_orientation)
 
@@ -313,10 +355,25 @@ def rotate(stem_orientation, binary_cut, stem):
 
     return final_binary_image_rotated
 
-def get_h_position(binary_image,fl):
+def get_h_position(binary_image, fl, image):
+
+    plt.imshow(binary_image)
+    plt.show()
+    kernel = np.ones((3, 70), np.uint8)
+    binary_image = cv2.erode(binary_image, kernel)
+    binary_image = cv2.dilate(binary_image, kernel)
+    plt.imshow(binary_image)
+    plt.show()
+    #plt.imshow(binary_image)
+    #plt.show()
     bw = np.asarray(binary_image)
     flip_bw = np.rot90(bw, 1)
+    (i,j) = flip_bw.nonzero()
+    x_rect = i[0]
+    y_rect = j[0]
     flip_bw = cv2.flip(flip_bw, 0)
+
+    #flip_aux_rect = cv2.flip
     #plt.imshow(flip_bw, 'gray')
     #plt.title('fliped to search first pixel')
     #plt.show()
@@ -347,11 +404,25 @@ def get_h_position(binary_image,fl):
     x_2 = i[0]
     y_2 = j[0]
 
-    fig, ax = plt.subplots(nrows=1, ncols=1)
-    ax.imshow(bw, cmap=plt.cm.gray)
-    ax.plot(x_1, y_1,'ro')
-    ax.plot(x_2, y_2, 'ro')
-    fig.savefig("Resultados/"+fl[:9]+".TIFF")
+    bw_lines = bw
+    bw_lines[:, x_1] = 255
+    bw_lines[:, -x_rect] = 255
+    #b, g, r = image.split()
+    #image = merge("RGB", (r, g, b))
+    image = image[..., ::-1]
+    fig, (ax, ax2) = plt.subplots(nrows=1, ncols=2, sharex=True, sharey=True)
+
+    ax.imshow(image)
+    ax.axis('off')
+    ax.set_title('Original image', fontsize=20)
+
+    ax2.imshow(bw_lines, 'gray')
+    ax2.plot(x_1, y_1,'ro')
+    ax2.plot(x_2, y_2, 'ro')
+    ax2.axis('off')
+    ax2.set_title('Final image', fontsize=20)
+
+    fig.savefig("Resultados_2/"+fl[:9]+".TIFF")
 
     #plt.imshow(bw,'gray')
     #plt.plot(x_1,y_1,'ro')
@@ -379,21 +450,6 @@ def area_filter(b):
 
     return b_ret
 
-def show_images(images,titles=None):
-    """Display a list of images"""
-    n_ims = len(images)
-    if titles is None: titles = ['(%d)' % i for i in range(1,n_ims + 1)]
-    fig = plt.figure()
-    n = 1
-    for image,title in zip(images,titles):
-        a = fig.add_subplot(1,n_ims,n) # Make subplot
-        if image.ndim == 2: # Is image grayscale?
-            plt.gray() # Only place in this blog you can't replace 'gray' with 'grey'
-        plt.imshow(image)
-        a.set_title(title)
-        n += 1
-    fig.set_size_inches(np.array(fig.get_size_inches()) * n_ims)
-    plt.show()
 
 def clasification(small_cm, large_cm, size,hoja_base):
     factor = 11.5 / 960
@@ -404,7 +460,7 @@ def clasification(small_cm, large_cm, size,hoja_base):
         category = '1'
     elif (length_cm > small_cm and length_cm < large_cm) and (hoja_base != 1):
         print ("Ideal")
-        category = 4
+        category = '4'
     elif length_cm > large_cm and hoja_base == 0:
         print ("Largo")
         category = '2'
