@@ -9,8 +9,6 @@ import numpy as np
 import cv2
 import os
 from matplotlib import pyplot as plt
-from skimage.morphology import erosion, dilation
-from skimage.morphology import rectangle, disk,square, closing
 from skimage import morphology
 from skimage.color import rgb2gray
 from scipy import ndimage
@@ -22,7 +20,14 @@ from skimage.io import concatenate_images, ImageCollection
 from skimage.feature import canny
 from skimage.filters import threshold_otsu
 from scipy import ndimage as ndi
+from colormath.color_objects import CMYKColor
+from colormath.color_conversions import convert_color
 from PIL import Image
+from skimage.filters import threshold_otsu, rank
+
+
+
+
 
 path=r"G:\Nueva carpeta\Baltica_01_13_2017_C6_5L8_5H0_9"
 list_all=os.listdir(path)
@@ -96,39 +101,24 @@ def convert_umbrals(small_cm, large_cm, hoja_base_cm):
 
 
 def segmentation(img):
-    ret, thresh_mask = cv2.threshold(img[:, :, 0], 50, 255, cv2.THRESH_BINARY_INV)
-    cmyk = Image.convert("CMYK",img)
+    blur = cv2.GaussianBlur(img, (15, 15), 0)
+    image_array = np.asarray(blur)
+
+    blue = image_array[:, :, 0]
+    ret, thresh_mask = cv2.threshold(blue, 50, 255, cv2.THRESH_BINARY_INV)
 
 
-    plt.imshow(cmyk)
-    plt.title('CMYK')
-    plt.show()
+
+
     se = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     thresh_mask = cv2.dilate(thresh_mask, se, iterations=2)
-    #thresh_mask = dilation(thresh_mask, disk(5))
-    #thresh_mask = dilation(thresh_mask, disk(5))
-    #
-    im_floodfill = thresh_mask.copy()
 
-    # Mask used to flood filling.
-    # Notice the size needs to be 2 pixels than the image.
-    h, w = thresh_mask.shape[:2]
-    mask = np.zeros((h + 2, w + 2), np.uint8)
-
-    # Floodfill from point (0, 0)
-    cv2.floodFill(im_floodfill, mask, (0, 0), 255);
-
-    # Invert floodfilled image
-    im_floodfill_inv = cv2.bitwise_not(im_floodfill)
-
-    # Combine the two images to get the foreground.
-    im_out = thresh_mask | im_floodfill_inv
-    #edges = canny(thresh_mask / 255.)
-    #thresh_mask = ndimage.binary_fill_holes(thresh_mask)
-    #thresh_mask = erosion(im_out, rectangle(18, 1))
-    #thresh_mask = erosion(thresh_mask, rectangle(1, 18))
     se = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 5))
     thresh_mask = cv2.erode(thresh_mask, se, iterations=2)
+
+    plt.imshow(thresh_mask)
+    plt.title('CMYK')
+    plt.show()
 
     #plt.imshow(thresh_mask)
     #plt.title('canny')
